@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "name": "LogsProcessor",
+      "path": "./LogsProcessor"
+    }
+  ],
+  "settings": {
+    "terminal.integrated.env.windows": {
+      "PATH": "${userHome}\\.azurelogicapps\\dependencies\\DotNetSDK;${env:PATH}"
+    },
+    "omnisharp.dotNetCliPaths": [
+      "${userHome}\\.azurelogicapps\\dependencies\\DotNetSDK"
+    ]
+  }
+}

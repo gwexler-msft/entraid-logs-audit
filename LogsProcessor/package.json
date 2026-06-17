@@ -1,0 +1,7 @@
+{
+  "name": "logsprocessor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Logic App Standard workflow project. No JS runtime code — this package.json exists only so azd's npm install step is a no-op.",
+  "scripts": {}
+}

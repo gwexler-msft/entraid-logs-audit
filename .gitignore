@@ -1,0 +1,34 @@
+# ---- Secrets / local settings (NEVER commit) ----
+**/local.settings.json
+**/appsettings.json
+*.env
+.env
+*.publishsettings
+*.azureauth
+
+# ---- Logic Apps Standard / Functions runtime artifacts ----
+**/bin/
+**/obj/
+**/.debug/
+**/__blobstorage__/
+**/__queuestorage__/
+**/__azurite_db*__.json
+**/workflow-designtime/
+
+# ---- Python virtual env (from scratch tooling) ----
+**/.python/
+
+# ---- IaC build outputs ----
+infra/**/*.json.tmp
+infra/**/*.json
+**/*.bicep.bak
+.azure/
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# ---- Editor / OS ----
+.vscode/
+.DS_Store
+Thumbs.db
+*.user

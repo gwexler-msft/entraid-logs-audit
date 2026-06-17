@@ -1,0 +1,247 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Parse_JSON": {
+                "type": "ParseJson",
+                "inputs": {
+                    "content": "@triggerBody()?['contentData']",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "eventTime": { "type": ["string", "null"] },
+                            "operationName": { "type": ["string", "null"] },
+                            "category": { "type": ["string", "null"] },
+                            "correlationId": { "type": ["string", "null"] },
+                            "activityCategory": { "type": ["string", "null"] },
+                            "activityId": { "type": ["string", "null"] },
+                            "activityCorrelationId": { "type": ["string", "null"] },
+                            "activityResult": { "type": ["string", "null"] },
+                            "activityResultReason": { "type": ["string", "null"] },
+                            "activityDisplayName": { "type": ["string", "null"] },
+                            "activityDateTime": { "type": ["string", "null"] },
+                            "activityLoggedByService": { "type": ["string", "null"] },
+                            "activityOperationType": { "type": ["string", "null"] },
+                            "activityUserAgent": { "type": ["string", "null"] },
+                            "identity": { "type": ["string", "null"] },
+                            "rawEvent": { "type": ["object", "null"] }
+                        }
+                    }
+                },
+                "runAfter": {}
+            },
+            "Convert_time_zone_from_UTC_to_ET": {
+                "type": "Expression",
+                "kind": "ConvertTimezone",
+                "inputs": {
+                    "baseTime": "@body('Parse_JSON')?['eventTime']",
+                    "sourceTimeZone": "UTC",
+                    "destinationTimeZone": "Eastern Standard Time",
+                    "formatString": "F"
+                },
+                "runAfter": {
+                    "Parse_JSON": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_SenderAddress": {
+                "type": "Compose",
+                "inputs": "@{appsetting('acs_sender')}",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_RecipientAddress": {
+                "type": "Compose",
+                "inputs": "@body('Parse_JSON')?['rawEvent']?['properties']?['targetResources']?[0]?['userPrincipalName']",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_SocAddress": {
+                "type": "Compose",
+                "inputs": "@{appsetting('alert_recipient')}",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_Recipients": {
+                "type": "Compose",
+                "inputs": "@if(not(equals(outputs('Set_SocAddress'), '')), json(concat('{\"to\":[{\"address\":\"', outputs('Set_RecipientAddress'), '\"}],\"bcc\":[{\"address\":\"', outputs('Set_SocAddress'), '\"}]}')), json(concat('{\"to\":[{\"address\":\"', outputs('Set_RecipientAddress'), '\"}]}')))",
+                "runAfter": {
+                    "Set_RecipientAddress": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_SocAddress": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_Activity": {
+                "type": "Compose",
+                "inputs": "@body('Parse_JSON')?['operationName']",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_Details": {
+                "type": "Compose",
+                "inputs": "@body('Parse_JSON')?['activityResultReason']",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_Time": {
+                "type": "Compose",
+                "inputs": "@body('Convert_time_zone_from_UTC_to_ET')",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_InitiatedBy": {
+                "type": "Compose",
+                "inputs": "@body('Parse_JSON')?['rawEvent']?['properties']?['initiatedBy']?['user']?['userPrincipalName']",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_EmailSubject": {
+                "type": "Compose",
+                "inputs": "@if(contains(body('Parse_JSON')?['operationName'],'registered security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'registered phone method'),'Phone Method Successfully Registered',if(contains(body('Parse_JSON')?['activityResultReason'],'registered Email Authentication Method'),'Email Method Successfully Registered',if(contains(body('Parse_JSON')?['activityResultReason'],'Authenticator App'),'Microsoft Authenticator App Successfully Registered',''))),if(contains(body('Parse_JSON')?['operationName'],'deleted security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'deleted phone method'),'Phone Method Successfully Deleted',if(contains(body('Parse_JSON')?['activityResultReason'],'deleted Email Authentication Method'),'Email Method Successfully Deleted',if(contains(body('Parse_JSON')?['activityResultReason'],'deleted Microsoft Authenticator'),'Microsoft Authenticator App Registration Successfully Deleted',''))),if(contains(body('Parse_JSON')?['operationName'],'updated security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'changed Email Authentication Method'),'Email Method Successfully Changed',if(contains(body('Parse_JSON')?['activityResultReason'],'changed phone method'),'Phone Method Successfully Changed','')),'')))",
+                "runAfter": {
+                    "Parse_JSON": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_EmailOpeningMessage": {
+                "type": "Compose",
+                "inputs": "@if(contains(body('Parse_JSON')?['operationName'],'registered security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'registered phone method'),'a phone number has been registered to',if(contains(body('Parse_JSON')?['activityResultReason'],'registered Email Authentication Method'),'an email has been registered to',if(contains(body('Parse_JSON')?['activityResultReason'],'Authenticator App'),'the Microsoft Authenticator app has been registered to',''))),if(contains(body('Parse_JSON')?['operationName'],'deleted security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'deleted phone method'),'a phone number has been deleted from',if(contains(body('Parse_JSON')?['activityResultReason'],'deleted Email Authentication Method'),'an email has been deleted from',if(contains(body('Parse_JSON')?['activityResultReason'],'deleted Microsoft Authenticator'),'the Microsoft Authenticator app registration has been deleted from',''))),if(contains(body('Parse_JSON')?['operationName'],'updated security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'changed Email Authentication Method'),'an email has been changed on',if(contains(body('Parse_JSON')?['activityResultReason'],'changed phone method'),'a phone number has been changed on','')),'')))",
+                "runAfter": {
+                    "Parse_JSON": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Set_EmailActionVerb": {
+                "type": "Compose",
+                "inputs": "@if(contains(body('Parse_JSON')?['operationName'],'registered security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'registered phone method'),'register a phone number',if(contains(body('Parse_JSON')?['activityResultReason'],'registered Email Authentication Method'),'register an email',if(contains(body('Parse_JSON')?['activityResultReason'],'Authenticator App'),'register your Microsoft account with the Microsoft Authenticator app',''))),if(contains(body('Parse_JSON')?['operationName'],'deleted security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'deleted phone method'),'delete a phone number',if(contains(body('Parse_JSON')?['activityResultReason'],'deleted Email Authentication Method'),'delete an email',if(contains(body('Parse_JSON')?['activityResultReason'],'deleted Microsoft Authenticator'),'delete your Microsoft account registration with the Microsoft Authenticator app',''))),if(contains(body('Parse_JSON')?['operationName'],'updated security info'),if(contains(body('Parse_JSON')?['activityResultReason'],'changed Email Authentication Method'),'update an email',if(contains(body('Parse_JSON')?['activityResultReason'],'changed phone method'),'update a phone number','')),'')))",
+                "runAfter": {
+                    "Parse_JSON": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Condition_send_email": {
+                "type": "If",
+                "expression": {
+                    "and": [
+                        {
+                            "not": {
+                                "equals": [
+                                    "@outputs('Set_EmailSubject')",
+                                    ""
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "actions": {
+                    "Send_email": {
+                        "type": "Http",
+                        "inputs": {
+                            "uri": "@{appsetting('acs_endpoint')}/emails:send",
+                            "method": "POST",
+                            "queries": {
+                                "api-version": "2023-03-31"
+                            },
+                            "headers": {
+                                "Content-Type": "application/json"
+                            },
+                            "body": {
+                                "senderAddress": "@{outputs('Set_SenderAddress')}",
+                                "recipients": "@outputs('Set_Recipients')",
+                                "content": {
+                                    "subject": "@{outputs('Set_EmailSubject')}",
+                                    "html": "<p class=\"editor-paragraph\">You are receiving this automated message because @{outputs('Set_EmailOpeningMessage')} your Microsoft account.<br><br>Activity: @{outputs('Set_Activity')}<br>Details: @{outputs('Set_Details')}<br>Time: @{outputs('Set_Time')}<br>Initated By: @{outputs('Set_InitiatedBy')}<br><br>If you made this change to your account on the Microsoft My Sign-In's site (https://mysignins.microsoft.com/security-info), you can ignore this email.<br><br>If you believe you did not recently @{outputs('Set_EmailActionVerb')}, contact our Information Security Office immediately at Ext. NNNN or #IncidentGroup@@example.com. Please include the email you received from DoNotReply@@example.com and let us know you were not aware of the change.<br><br>Do NOT reply to this email, this mailbox is not monitored.</p>"
+                                },
+                                "importance": "Normal"
+                            },
+                            "authentication": {
+                                "type": "ManagedServiceIdentity",
+                                "audience": "https://communication.azure.com"
+                            }
+                        }
+                    }
+                },
+                "else": {
+                    "actions": {}
+                },
+                "runAfter": {
+                    "Set_SenderAddress": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_Recipients": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_Activity": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_Details": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_Time": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_InitiatedBy": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_EmailSubject": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_EmailOpeningMessage": [
+                        "SUCCEEDED"
+                    ],
+                    "Set_EmailActionVerb": [
+                        "SUCCEEDED"
+                    ]
+                }
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "When_events_are_available_in_Event_hub": {
+                "type": "ServiceProvider",
+                "inputs": {
+                    "parameters": {
+                        "eventHubName": "insights-logs-auditlogs-filtered",
+                        "consumerGroup": "$Default"
+                    },
+                    "serviceProviderConfiguration": {
+                        "connectionName": "eventHub",
+                        "operationId": "receiveEvents",
+                        "serviceProviderId": "/serviceProviders/eventHub"
+                    }
+                },
+                "splitOn": "@triggerOutputs()?['body']"
+            }
+        }
+    },
+    "kind": "Stateful"
+}

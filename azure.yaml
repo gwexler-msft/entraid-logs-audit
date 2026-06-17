@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://aka.ms/azure.yaml.json
+name: entraid-logs-audit
+metadata:
+  template: entraid-logs-audit@1.0.0
+
+# This project reuses the existing resource-group-scoped Bicep
+# (infra/main.bicep, targetScope = 'resourceGroup'). azd ensures the target
+# resource group exists, then deploys infra/main.bicep using its parameter file.
+#
+# azd uses infra/main.bicepparam by default (prod values). For dev/test, either
+# edit that file, set the values via `azd env set`, or use the manual `az` flow
+# with main.dev.bicepparam / main.test.bicepparam (see docs/deployment-guide.md).
+resourceGroup: ${AZURE_RESOURCE_GROUP}
+
+infra:
+  provider: bicep
+  path: infra
+  module: main
+
+services:
+  logsprocessor:
+    # Logic Apps Standard is a 'functionapp,workflowapp' kind; azd uses the
+    # 'function' host to package and zip-deploy it. The Bicep tags the site with
+    # 'azd-service-name: logsprocessor' so azd can find it.
+    project: ./LogsProcessor
+    host: function
+    # Workflow content is pure JSON (no compiled code). 'js' tells azd how to
+    # package; without a package.json/build script azd just zips the project
+    # as-is - equivalent to `func azure functionapp publish --no-build`.
+    language: js
+  signinprocessor:
+    # Parallel sign-in / risk alerting Logic App (separate, internal-facing).
+    # The Bicep tags its site with 'azd-service-name: signinprocessor'.
+    project: ./SignInProcessor
+    host: function
+    language: js
+
+hooks:
+  # All connectivity is identity-based (storage, Event Hub, ACS Email all use
+  # the Logic App managed identity), so there are no secrets to wire post-deploy.
+  # This hook just prints the remaining manual steps (workflow deploy + tenant
+  # diagnostic settings).
+  postprovision:
+    shell: pwsh
+    run: ./scripts/postprovision.ps1
+    continueOnError: false

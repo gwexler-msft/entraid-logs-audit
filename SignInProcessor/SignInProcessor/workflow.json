@@ -1,0 +1,201 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Parse_JSON": {
+                "type": "ParseJson",
+                "inputs": {
+                    "content": "@triggerBody()?['contentData']",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "eventTime": { "type": ["string", "null"] },
+                            "category": { "type": ["string", "null"] },
+                            "correlationId": { "type": ["string", "null"] },
+                            "userPrincipalName": { "type": ["string", "null"] },
+                            "userDisplayName": { "type": ["string", "null"] },
+                            "ipAddress": { "type": ["string", "null"] },
+                            "appDisplayName": { "type": ["string", "null"] },
+                            "riskLevelDuringSignIn": { "type": ["string", "null"] },
+                            "riskLevel": { "type": ["string", "null"] },
+                            "riskState": { "type": ["string", "null"] },
+                            "riskEventType": { "type": ["string", "null"] },
+                            "riskDetail": { "type": ["string", "null"] },
+                            "errorCode": { "type": ["integer", "null"] },
+                            "failureReason": { "type": ["string", "null"] },
+                            "locationCity": { "type": ["string", "null"] },
+                            "locationCountry": { "type": ["string", "null"] },
+                            "rawEvent": { "type": ["object", "null"] }
+                        }
+                    }
+                },
+                "runAfter": {}
+            },
+            "Convert_time_zone_from_UTC_to_ET": {
+                "type": "Expression",
+                "kind": "ConvertTimezone",
+                "inputs": {
+                    "baseTime": "@body('Parse_JSON')?['eventTime']",
+                    "sourceTimeZone": "UTC",
+                    "destinationTimeZone": "Eastern Standard Time",
+                    "formatString": "F"
+                },
+                "runAfter": {
+                    "Parse_JSON": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_SenderAddress": {
+                "type": "Compose",
+                "inputs": "@{appsetting('acs_sender')}",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_SocAddress": {
+                "type": "Compose",
+                "inputs": "@{appsetting('alert_recipient')}",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_UserEmail": {
+                "type": "Compose",
+                "inputs": "@coalesce(body('Parse_JSON')?['userPrincipalName'], '')",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_ToAddress": {
+                "type": "Compose",
+                "inputs": "@if(contains(outputs('Set_UserEmail'), '@'), outputs('Set_UserEmail'), outputs('Set_SocAddress'))",
+                "runAfter": {
+                    "Set_UserEmail": [ "SUCCEEDED" ],
+                    "Set_SocAddress": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_Recipients": {
+                "type": "Compose",
+                "inputs": "@if(and(contains(outputs('Set_UserEmail'), '@'), not(equals(outputs('Set_SocAddress'), ''))), json(concat('{\"to\":[{\"address\":\"', outputs('Set_UserEmail'), '\"}],\"bcc\":[{\"address\":\"', outputs('Set_SocAddress'), '\"}]}')), json(concat('{\"to\":[{\"address\":\"', outputs('Set_ToAddress'), '\"}]}')))",
+                "runAfter": {
+                    "Set_ToAddress": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_User": {
+                "type": "Compose",
+                "inputs": "@{coalesce(body('Parse_JSON')?['userPrincipalName'], body('Parse_JSON')?['userDisplayName'], 'unknown user')}",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_Time": {
+                "type": "Compose",
+                "inputs": "@body('Convert_time_zone_from_UTC_to_ET')",
+                "runAfter": {
+                    "Convert_time_zone_from_UTC_to_ET": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_EventType": {
+                "type": "Compose",
+                "inputs": "@if(equals(body('Parse_JSON')?['category'],'UserRiskEvents'),'Risk detection',if(equals(body('Parse_JSON')?['category'],'RiskyUsers'),'User flagged at risk',if(or(equals(coalesce(body('Parse_JSON')?['riskLevelDuringSignIn'],''),'high'),equals(coalesce(body('Parse_JSON')?['riskLevelDuringSignIn'],''),'medium'),equals(coalesce(body('Parse_JSON')?['riskState'],''),'atRisk')),'Risky sign-in','Failed sign-in')))",
+                "runAfter": {
+                    "Parse_JSON": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_RiskSummary": {
+                "type": "Compose",
+                "inputs": "@if(equals(body('Parse_JSON')?['category'],'SignInLogs'),concat('Risk level: ',coalesce(body('Parse_JSON')?['riskLevelDuringSignIn'],'n/a'),' | Risk state: ',coalesce(body('Parse_JSON')?['riskState'],'n/a'),' | Error code: ',string(coalesce(body('Parse_JSON')?['errorCode'],0)),' | Reason: ',coalesce(body('Parse_JSON')?['failureReason'],'n/a')),concat('Risk event: ',coalesce(body('Parse_JSON')?['riskEventType'],'n/a'),' | Risk level: ',coalesce(body('Parse_JSON')?['riskLevel'],'n/a'),' | Risk state: ',coalesce(body('Parse_JSON')?['riskState'],'n/a'),' | Detail: ',coalesce(body('Parse_JSON')?['riskDetail'],'n/a')))",
+                "runAfter": {
+                    "Parse_JSON": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_LocationLine": {
+                "type": "Compose",
+                "inputs": "@concat('IP: ',coalesce(body('Parse_JSON')?['ipAddress'],'n/a'),' | Location: ',coalesce(body('Parse_JSON')?['locationCity'],'n/a'),', ',coalesce(body('Parse_JSON')?['locationCountry'],'n/a'),' | App: ',coalesce(body('Parse_JSON')?['appDisplayName'],'n/a'))",
+                "runAfter": {
+                    "Parse_JSON": [ "SUCCEEDED" ]
+                }
+            },
+            "Set_EmailSubject": {
+                "type": "Compose",
+                "inputs": "@concat('[Entra ID Alert] ',outputs('Set_EventType'),' - ',outputs('Set_User'))",
+                "runAfter": {
+                    "Set_EventType": [ "SUCCEEDED" ],
+                    "Set_User": [ "SUCCEEDED" ]
+                }
+            },
+            "Condition_send_email": {
+                "type": "If",
+                "expression": {
+                    "and": [
+                        {
+                            "not": {
+                                "equals": [ "@outputs('Set_ToAddress')", "" ]
+                            }
+                        }
+                    ]
+                },
+                "actions": {
+                    "Send_email": {
+                        "type": "Http",
+                        "inputs": {
+                            "uri": "@{appsetting('acs_endpoint')}/emails:send",
+                            "method": "POST",
+                            "queries": {
+                                "api-version": "2023-03-31"
+                            },
+                            "headers": {
+                                "Content-Type": "application/json"
+                            },
+                            "body": {
+                                "senderAddress": "@{outputs('Set_SenderAddress')}",
+                                "recipients": "@outputs('Set_Recipients')",
+                                "content": {
+                                    "subject": "@{outputs('Set_EmailSubject')}",
+                                    "html": "<p class=\"editor-paragraph\">An Entra ID sign-in / risk event was detected.<br><br>Event: @{outputs('Set_EventType')}<br>User: @{outputs('Set_User')}<br>@{outputs('Set_RiskSummary')}<br>@{outputs('Set_LocationLine')}<br>Time (ET): @{outputs('Set_Time')}<br>Correlation Id: @{coalesce(body('Parse_JSON')?['correlationId'],'n/a')}<br><br>This is an automated security alert. Review the sign-in in the Entra admin center if this activity is unexpected.<br><br>Do NOT reply to this email; this mailbox is not monitored.</p>"
+                                },
+                                "importance": "Normal"
+                            },
+                            "authentication": {
+                                "type": "ManagedServiceIdentity",
+                                "audience": "https://communication.azure.com"
+                            }
+                        }
+                    }
+                },
+                "else": {
+                    "actions": {}
+                },
+                "runAfter": {
+                    "Set_SenderAddress": [ "SUCCEEDED" ],
+                    "Set_Recipients": [ "SUCCEEDED" ],
+                    "Set_User": [ "SUCCEEDED" ],
+                    "Set_Time": [ "SUCCEEDED" ],
+                    "Set_EventType": [ "SUCCEEDED" ],
+                    "Set_RiskSummary": [ "SUCCEEDED" ],
+                    "Set_LocationLine": [ "SUCCEEDED" ],
+                    "Set_EmailSubject": [ "SUCCEEDED" ]
+                }
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "When_events_are_available_in_Event_hub": {
+                "type": "ServiceProvider",
+                "inputs": {
+                    "parameters": {
+                        "eventHubName": "insights-logs-signin-filtered",
+                        "consumerGroup": "$Default"
+                    },
+                    "serviceProviderConfiguration": {
+                        "connectionName": "eventHub",
+                        "operationId": "receiveEvents",
+                        "serviceProviderId": "/serviceProviders/eventHub"
+                    }
+                },
+                "splitOn": "@triggerOutputs()?['body']"
+            }
+        }
+    },
+    "kind": "Stateful"
+}
